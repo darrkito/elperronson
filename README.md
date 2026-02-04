@@ -106,6 +106,52 @@ src/
 
 ## How It Works
 
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           MARKET MAKER BOT                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────┐         ┌──────────────────┐         ┌─────────────────┐  │
+│   │   BINANCE   │ ──WS──▶ │  FAIR PRICE      │         │   AFTERMATH /   │  │
+│   │   (spot)    │  ticks  │  CALCULATOR      │         │   HYPERLIQUID   │  │
+│   └─────────────┘         │                  │         │   (perps)       │  │
+│         or                │  price ──▶ EMA   │         └────────┬────────┘  │
+│   ┌─────────────┐         │                  │                  │           │
+│   │ HYPERLIQUID │ ──WS──▶ │  $98,420.50      │                  │           │
+│   │   (perps)   │  mids   └────────┬─────────┘                  │           │
+│   └─────────────┘                  │                            │           │
+│                                    ▼                            │           │
+│                          ┌──────────────────┐                   │           │
+│                          │     QUOTER       │                   │           │
+│                          │                  │                   │           │
+│                          │  spread: 10 bps  │                   │           │
+│                          │                  │                   │           │
+│                          │  BID: $98,410.68 │───── place ──────▶│           │
+│                          │  ASK: $98,430.32 │      orders       │           │
+│                          └────────┬─────────┘                   │           │
+│                                   │                             │           │
+│                                   ▼                             │           │
+│                          ┌──────────────────┐                   │           │
+│                          │ POSITION MANAGER │◀──── positions ───┤           │
+│                          │                  │                   │           │
+│                          │  notional: $500  │                   │           │
+│                          │  close mode: ON  │                   │           │
+│                          │  margin: 45%     │                   │           │
+│                          └──────────────────┘                   │           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FLOW:
+  1. Stream prices from Binance/Hyperliquid
+  2. Calculate fair price using EMA
+  3. Generate bid/ask quotes with spread
+  4. Place orders on target exchange
+  5. Monitor position & margin for risk
+  6. Switch to close mode when overleveraged
+```
+
+### Step by Step
+
 1. **Connect** - Establishes connection to exchange and price feed
 2. **Warm up** - Collects price data to initialize EMA (default: 10s)
 3. **Quote** - Places bid/ask orders around fair price with spread
