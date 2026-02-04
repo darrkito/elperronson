@@ -1,0 +1,565 @@
+{
+  "name": "Multi-Exchange Perpetuals Market Maker Bot",
+  "description": "A market maker bot supporting Aftermath Perpetuals (Sui) and Hyperliquid, using Binance as price oracle",
+  "repository": "aftermath-market-maker",
+  "techStack": {
+    "runtime": "Node.js v20+ / Bun",
+    "language": "TypeScript",
+    "linting": "Biome",
+    "testing": "Vitest"
+  },
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Project Initialization",
+      "description": "As a developer, I want the project initialized with all dependencies and configuration so I can start building the bot",
+      "acceptanceCriteria": [
+        "package.json exists with all dependencies (@nktkas/hyperliquid, @mysten/sui, viem, ws, eventsource, dotenv, commander)",
+        "tsconfig.json configured for Node.js with ES modules",
+        "biome.json configured for linting and formatting",
+        ".env.example contains all environment variables documented in PLAN.md",
+        "src/ directory structure matches architecture in PLAN.md"
+      ],
+      "tasks": [
+        "Create package.json with dependencies",
+        "Create tsconfig.json with strict mode and ES modules",
+        "Create biome.json with recommended rules",
+        "Create .env.example with all environment variables",
+        "Create src/ directory structure"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Common Exchange Interface",
+      "description": "As a developer, I want a unified exchange interface so both exchanges can be used interchangeably",
+      "acceptanceCriteria": [
+        "IExchange interface defined in src/exchanges/types.ts",
+        "Interface includes: connect, disconnect, getMarkets, subscribeOrderbook, getAccount, getPositions, getOpenOrders, placeOrder, cancelOrder, cancelAllOrders",
+        "Supporting types defined: Market, Orderbook, Account, Position, Order, OrderRequest, OrderResult",
+        "Shared types exported from src/types.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/types.ts with IExchange interface",
+        "Define Market, Orderbook, Account types",
+        "Define Position, Order, OrderRequest, OrderResult types",
+        "Create src/types.ts for shared types"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Logger Utility",
+      "description": "As a developer, I want a configurable logger so I can debug and monitor the bot",
+      "acceptanceCriteria": [
+        "Logger supports levels: debug, info, warn, error",
+        "Log level configurable via LOG_LEVEL env var",
+        "Logs include timestamp and level prefix",
+        "Logger exported from src/utils/logger.ts"
+      ],
+      "tasks": [
+        "Create src/utils/logger.ts with log level support",
+        "Implement timestamp formatting",
+        "Support LOG_LEVEL environment variable"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Hyperliquid Client Setup",
+      "description": "As a developer, I want a Hyperliquid client wrapper so I can interact with the exchange",
+      "acceptanceCriteria": [
+        "Client initializes InfoClient and ExchangeClient from @nktkas/hyperliquid",
+        "Client configurable for mainnet/testnet via HL_TESTNET env var",
+        "Private key loaded from HL_PRIVATE_KEY env var",
+        "Client exported from src/exchanges/hyperliquid/client.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/client.ts",
+        "Initialize HttpTransport, InfoClient, ExchangeClient",
+        "Support testnet configuration",
+        "Handle wallet initialization from private key"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Hyperliquid Market Discovery",
+      "description": "As a bot, I want to discover available markets on Hyperliquid so I can trade them",
+      "acceptanceCriteria": [
+        "Fetches all perpetual markets via InfoClient.meta()",
+        "Maps Hyperliquid market format to common Market type",
+        "Includes asset index, symbol, and precision info",
+        "Exported from src/exchanges/hyperliquid/markets.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/markets.ts",
+        "Implement getMarkets() function",
+        "Map Hyperliquid asset info to Market type"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Hyperliquid Orderbook Subscription",
+      "description": "As a bot, I want to subscribe to Hyperliquid orderbook updates so I can see market depth",
+      "acceptanceCriteria": [
+        "Subscribes to L2 book via SubscriptionClient",
+        "Converts L2 book to common Orderbook type",
+        "Supports subscribe/unsubscribe by symbol",
+        "Handles WebSocket reconnection",
+        "Exported from src/exchanges/hyperliquid/orderbook.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/orderbook.ts",
+        "Initialize WebSocketTransport and SubscriptionClient",
+        "Implement subscribeOrderbook() with callback",
+        "Implement unsubscribeOrderbook()",
+        "Handle reconnection on disconnect"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Hyperliquid Account Management",
+      "description": "As a bot, I want to fetch my Hyperliquid account and positions so I can manage risk",
+      "acceptanceCriteria": [
+        "Fetches account state via InfoClient.clearinghouseState()",
+        "Maps to common Account and Position types",
+        "Includes margin, equity, and position details",
+        "Exported from src/exchanges/hyperliquid/account.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/account.ts",
+        "Implement getAccount() function",
+        "Implement getPositions() function",
+        "Map Hyperliquid types to common types"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Hyperliquid Order Operations",
+      "description": "As a bot, I want to place and cancel orders on Hyperliquid so I can market make",
+      "acceptanceCriteria": [
+        "Places limit orders via ExchangeClient.order()",
+        "Cancels orders via ExchangeClient.cancel()",
+        "Fetches open orders via InfoClient.openOrders()",
+        "Maps to common Order and OrderResult types",
+        "Supports reduce-only and post-only flags",
+        "Exported from src/exchanges/hyperliquid/orders.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/orders.ts",
+        "Implement placeOrder() function",
+        "Implement cancelOrder() function",
+        "Implement cancelAllOrders() function",
+        "Implement getOpenOrders() function"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Hyperliquid Unified Adapter",
+      "description": "As a developer, I want a unified Hyperliquid adapter implementing IExchange",
+      "acceptanceCriteria": [
+        "HyperliquidExchange class implements IExchange",
+        "Composes client, markets, orderbook, account, orders modules",
+        "Implements connect/disconnect lifecycle",
+        "Exported from src/exchanges/hyperliquid/index.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/hyperliquid/index.ts",
+        "Implement HyperliquidExchange class",
+        "Implement all IExchange methods",
+        "Handle connection lifecycle"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Aftermath API Client",
+      "description": "As a developer, I want an Aftermath CCXT API client so I can interact with the exchange",
+      "acceptanceCriteria": [
+        "HTTP client for Aftermath CCXT REST API",
+        "Base URL configurable (mainnet-preview, testnet)",
+        "Handles JSON request/response formatting",
+        "Exported from src/exchanges/aftermath/client.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/client.ts",
+        "Implement fetch wrapper with base URL",
+        "Implement GET and POST methods",
+        "Add error handling for API responses"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Sui Wallet Signing",
+      "description": "As a bot, I want to sign Sui transactions so I can execute trades on Aftermath",
+      "acceptanceCriteria": [
+        "Loads Ed25519 keypair from SUI_PRIVATE_KEY env var",
+        "Signs transaction digests from build responses",
+        "Returns Base64-encoded Sui signature format",
+        "Derives wallet address from keypair",
+        "Exported from src/exchanges/aftermath/signer.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/signer.ts",
+        "Implement keypair loading from environment",
+        "Implement signTransaction() function",
+        "Implement getWalletAddress() function"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Aftermath Market Discovery",
+      "description": "As a bot, I want to discover available markets on Aftermath so I can trade them",
+      "acceptanceCriteria": [
+        "Fetches markets via GET /api/ccxt/markets",
+        "Maps to common Market type with chId, symbol, precision",
+        "Caches markets for reuse",
+        "Exported from src/exchanges/aftermath/markets.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/markets.ts",
+        "Implement getMarkets() function",
+        "Map Aftermath market format to common Market type",
+        "Add market caching"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Aftermath Orderbook",
+      "description": "As a bot, I want to fetch and stream Aftermath orderbook so I can see market depth",
+      "acceptanceCriteria": [
+        "Fetches snapshot via POST /api/ccxt/orderbook",
+        "Streams updates via GET /api/ccxt/stream/orderbook (SSE)",
+        "Applies deltas to local orderbook state",
+        "Converts to common Orderbook type",
+        "Handles reconnection",
+        "Exported from src/exchanges/aftermath/orderbook.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/orderbook.ts",
+        "Implement getOrderbook() snapshot function",
+        "Implement subscribeOrderbook() with EventSource",
+        "Apply delta updates to local state",
+        "Handle SSE reconnection"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Aftermath Account Management",
+      "description": "As a bot, I want to fetch my Aftermath account and positions so I can manage risk",
+      "acceptanceCriteria": [
+        "Fetches accounts via POST /api/ccxt/accounts",
+        "Fetches positions via POST /api/ccxt/positions",
+        "Fetches balance via POST /api/ccxt/balance",
+        "Maps to common Account and Position types",
+        "Caches accountCapId and accountNumber",
+        "Exported from src/exchanges/aftermath/account.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/account.ts",
+        "Implement getAccounts() function",
+        "Implement getPositions() function",
+        "Implement getBalance() function",
+        "Map to common types"
+      ]
+    },
+    {
+      "id": "US-015",
+      "title": "Aftermath Order Operations",
+      "description": "As a bot, I want to place and cancel orders on Aftermath using build/sign/submit flow",
+      "acceptanceCriteria": [
+        "Builds order tx via POST /api/ccxt/build/createOrders",
+        "Signs transaction digest with Sui wallet",
+        "Submits via POST /api/ccxt/submit/createOrders",
+        "Cancels via build/submit cancelOrders endpoints",
+        "Fetches pending orders via POST /api/ccxt/myPendingOrders",
+        "Maps to common Order types",
+        "Exported from src/exchanges/aftermath/orders.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/orders.ts",
+        "Implement buildAndSubmitOrder() helper",
+        "Implement placeOrder() function",
+        "Implement cancelOrder() function",
+        "Implement cancelAllOrders() function",
+        "Implement getOpenOrders() function"
+      ]
+    },
+    {
+      "id": "US-016",
+      "title": "Aftermath Unified Adapter",
+      "description": "As a developer, I want a unified Aftermath adapter implementing IExchange",
+      "acceptanceCriteria": [
+        "AftermathExchange class implements IExchange",
+        "Composes client, signer, markets, orderbook, account, orders modules",
+        "Implements connect/disconnect lifecycle",
+        "Discovers account on connect",
+        "Exported from src/exchanges/aftermath/index.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/aftermath/index.ts",
+        "Implement AftermathExchange class",
+        "Implement all IExchange methods",
+        "Handle connection and account discovery"
+      ]
+    },
+    {
+      "id": "US-017",
+      "title": "Binance Price Feed",
+      "description": "As a bot, I want to stream prices from Binance so I can calculate fair price",
+      "acceptanceCriteria": [
+        "Connects to Binance WebSocket for trade stream",
+        "Subscribes to symbol@trade stream (e.g., btcusdt@trade)",
+        "Emits price updates via callback",
+        "Handles reconnection",
+        "Exported from src/pricing/binance.ts"
+      ],
+      "tasks": [
+        "Create src/pricing/binance.ts",
+        "Implement WebSocket connection to Binance",
+        "Subscribe to trade stream for symbol",
+        "Parse trade messages and emit prices",
+        "Handle reconnection on disconnect"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Fair Price Calculator",
+      "description": "As a bot, I want to calculate fair price from Binance trades so I can quote accurately",
+      "acceptanceCriteria": [
+        "Calculates EMA of recent trade prices",
+        "Configurable window (default 5 minutes)",
+        "Returns current fair price on demand",
+        "Handles initial warmup period",
+        "Exported from src/pricing/fair-price.ts"
+      ],
+      "tasks": [
+        "Create src/pricing/fair-price.ts",
+        "Implement price history buffer",
+        "Implement EMA calculation",
+        "Add warmup period detection",
+        "Export getFairPrice() function"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Market Maker Configuration",
+      "description": "As a trader, I want configurable market maker parameters so I can tune the strategy",
+      "acceptanceCriteria": [
+        "Default config matches PLAN.md (spreadBps, orderSizeUsd, etc.)",
+        "Config loadable from environment variables",
+        "Config overridable via CLI flags",
+        "Exported from src/bots/mm/config.ts"
+      ],
+      "tasks": [
+        "Create src/bots/mm/config.ts",
+        "Define default configuration object",
+        "Implement loadConfig() from environment",
+        "Support CLI flag overrides"
+      ]
+    },
+    {
+      "id": "US-020",
+      "title": "Quote Generator",
+      "description": "As a bot, I want to generate bid/ask quotes around fair price with configurable spread",
+      "acceptanceCriteria": [
+        "Calculates bid = fairPrice * (1 - spreadBps/10000)",
+        "Calculates ask = fairPrice * (1 + spreadBps/10000)",
+        "Supports close mode with tighter spread",
+        "Rounds prices to exchange precision",
+        "Exported from src/bots/mm/quoter.ts"
+      ],
+      "tasks": [
+        "Create src/bots/mm/quoter.ts",
+        "Implement generateQuotes() function",
+        "Add close mode spread logic",
+        "Add price rounding to precision"
+      ]
+    },
+    {
+      "id": "US-021",
+      "title": "Position Manager",
+      "description": "As a bot, I want to track positions and determine close mode so I can manage risk",
+      "acceptanceCriteria": [
+        "Tracks position per exchange/symbol",
+        "Determines close mode when position > threshold",
+        "Calculates position notional value",
+        "Exported from src/bots/mm/position.ts"
+      ],
+      "tasks": [
+        "Create src/bots/mm/position.ts",
+        "Implement PositionManager class",
+        "Track position size and side",
+        "Implement isCloseMode() check",
+        "Calculate position notional"
+      ]
+    },
+    {
+      "id": "US-022",
+      "title": "Market Maker Main Loop",
+      "description": "As a bot, I want a main market maker loop that quotes continuously",
+      "acceptanceCriteria": [
+        "Initializes exchange, price feed, position manager",
+        "Warmup period before first quote",
+        "Main loop: get fair price → generate quotes → place orders",
+        "Cancels stale orders before placing new ones",
+        "Respects update throttle interval",
+        "Handles errors without crashing",
+        "Exported from src/bots/mm/index.ts"
+      ],
+      "tasks": [
+        "Create src/bots/mm/index.ts",
+        "Implement MarketMaker class",
+        "Implement start() method with warmup",
+        "Implement main loop with quote/order logic",
+        "Add error handling and recovery",
+        "Implement stop() method for graceful shutdown"
+      ]
+    },
+    {
+      "id": "US-023",
+      "title": "Close Mode Logic",
+      "description": "As a bot, I want to switch to close mode when position exceeds threshold",
+      "acceptanceCriteria": [
+        "Detects when position notional > closeThresholdUsd",
+        "In close mode: only quotes on reducing side",
+        "Uses tighter spread (takeProfitBps) in close mode",
+        "Sets reduceOnly=true on orders in close mode",
+        "Integrated into market maker loop"
+      ],
+      "tasks": [
+        "Add close mode detection to PositionManager",
+        "Modify quoter for close mode spread",
+        "Modify order placement for reduce-only",
+        "Integrate into main loop"
+      ]
+    },
+    {
+      "id": "US-024",
+      "title": "Bot CLI Entry Point",
+      "description": "As a user, I want a CLI to run the market maker bot with flags",
+      "acceptanceCriteria": [
+        "Entry point at src/cli/bot.ts",
+        "Supports --exchange flag (aftermath, hyperliquid)",
+        "Supports --symbol flag (BTC, ETH, etc.)",
+        "Loads config from environment and CLI",
+        "Handles SIGINT for graceful shutdown",
+        "npm script: npm run bot"
+      ],
+      "tasks": [
+        "Create src/cli/bot.ts",
+        "Parse CLI flags with commander",
+        "Initialize correct exchange based on flag",
+        "Start market maker with config",
+        "Handle SIGINT/SIGTERM signals"
+      ]
+    },
+    {
+      "id": "US-025",
+      "title": "Market Monitor TUI",
+      "description": "As a user, I want a terminal UI to monitor the market maker status",
+      "acceptanceCriteria": [
+        "Entry point at src/cli/monitor.ts",
+        "Displays current fair price, bid/ask quotes",
+        "Displays position size and PnL",
+        "Displays open orders",
+        "Updates in real-time",
+        "npm script: npm run monitor"
+      ],
+      "tasks": [
+        "Create src/cli/monitor.ts",
+        "Implement status display formatting",
+        "Subscribe to relevant data streams",
+        "Refresh display on updates"
+      ]
+    },
+    {
+      "id": "US-026",
+      "title": "Exchange Factory",
+      "description": "As a developer, I want an exchange factory to create exchange instances by name",
+      "acceptanceCriteria": [
+        "Factory function accepts exchange name string",
+        "Returns IExchange instance for aftermath or hyperliquid",
+        "Throws for unknown exchange names",
+        "Exported from src/exchanges/index.ts"
+      ],
+      "tasks": [
+        "Create src/exchanges/index.ts",
+        "Implement createExchange() factory",
+        "Import and instantiate exchange classes"
+      ]
+    },
+    {
+      "id": "US-027",
+      "title": "Integration Tests - Hyperliquid",
+      "description": "As a developer, I want integration tests for Hyperliquid adapter",
+      "acceptanceCriteria": [
+        "Tests connect/disconnect lifecycle",
+        "Tests getMarkets returns valid markets",
+        "Tests orderbook subscription receives data",
+        "Tests can be run against testnet",
+        "Located in tests/hyperliquid.test.ts"
+      ],
+      "tasks": [
+        "Create tests/hyperliquid.test.ts",
+        "Write connection test",
+        "Write markets test",
+        "Write orderbook test",
+        "Configure Vitest for tests"
+      ]
+    },
+    {
+      "id": "US-028",
+      "title": "Integration Tests - Aftermath",
+      "description": "As a developer, I want integration tests for Aftermath adapter",
+      "acceptanceCriteria": [
+        "Tests connect/disconnect lifecycle",
+        "Tests getMarkets returns valid markets",
+        "Tests orderbook fetching and streaming",
+        "Tests can be run against testnet",
+        "Located in tests/aftermath.test.ts"
+      ],
+      "tasks": [
+        "Create tests/aftermath.test.ts",
+        "Write connection test",
+        "Write markets test",
+        "Write orderbook test"
+      ]
+    },
+    {
+      "id": "US-029",
+      "title": "Docker Deployment",
+      "description": "As a DevOps engineer, I want Docker support for deployment",
+      "acceptanceCriteria": [
+        "Dockerfile builds production image",
+        "Multi-stage build for smaller image",
+        "docker-compose.yml with service per exchange",
+        "Environment variables passed via .env file",
+        "Health check configured"
+      ],
+      "tasks": [
+        "Create Dockerfile with multi-stage build",
+        "Create docker-compose.yml",
+        "Add health check endpoint or command",
+        "Document Docker usage in README"
+      ]
+    },
+    {
+      "id": "US-030",
+      "title": "Documentation",
+      "description": "As a user, I want a README with setup and usage instructions",
+      "acceptanceCriteria": [
+        "README.md with project overview",
+        "Prerequisites (Node.js, Bun)",
+        "Installation instructions",
+        "Environment variable documentation",
+        "Usage examples for both exchanges",
+        "Docker usage instructions"
+      ],
+      "tasks": [
+        "Create README.md",
+        "Document prerequisites and installation",
+        "Document environment variables",
+        "Add usage examples",
+        "Document Docker deployment"
+      ]
+    }
+  ],
+  "totalUserStories": 30
+}
