@@ -49,28 +49,17 @@ export interface MarketMakerConfig {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: Omit<MarketMakerConfig, "exchange" | "symbol"> = {
-  // Price source
-  priceSource: "binance",
-
-  // Spread
+  priceSource: "hyperliquid",
   spreadBps: 10,
   takeProfitBps: 5,
-
-  // Position limits
   orderSizeUsd: 100,
   closeThresholdUsd: 500,
   maxPositionUsd: 2000,
-
-  // Timing
   warmupSeconds: 10,
   updateThrottleMs: 100,
-  orderSyncIntervalMs: 3000,
-
-  // Fair price
+  orderSyncIntervalMs: 14400000,
   fairPriceWindowMs: 5 * 60 * 1000,
-
-  // Risk
-  minMarginRatio: 0.1,
+  minMarginRatio: 0.3, // 30% available margin safety
 };
 
 /**
@@ -97,7 +86,7 @@ export function loadConfigFromEnv(): Partial<MarketMakerConfig> {
     config.spreadBps = Number.parseInt(process.env.SPREAD_BPS, 10);
   }
   if (process.env.TAKE_PROFIT_BPS) {
-    config.takeProfitBps = Number.parseInt(process.env.TAKE_PROFIT_BPS, 10);
+    config.takeProfitBps = Number.parseInt(process.env.TAKE_PROFIT_BPS, 5);
   }
 
   // Position limits

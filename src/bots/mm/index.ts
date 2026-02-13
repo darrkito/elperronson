@@ -265,49 +265,34 @@ export class MarketMaker {
   /**
    * Check margin ratio and pause if too low
    */
-  private async checkMarginRatio(): Promise<void> {
-    try {
-      const account = await this.exchange.getAccount();
-
-      // Calculate margin ratio: availableMargin / equity
-      // Higher is safer, lower means closer to liquidation
-      if (account.equity > 0) {
-        this.lastMarginRatio = account.availableMargin / account.equity;
-      }
-
-      if (this.lastMarginRatio < this.config.minMarginRatio) {
-        if (this.state === "running") {
-          logger.warn(
-            `Margin ratio ${(this.lastMarginRatio * 100).toFixed(1)}% below minimum ${(this.config.minMarginRatio * 100).toFixed(1)}%, pausing...`
-          );
-          this.state = "paused";
-
-          // Cancel all orders to reduce risk
-          await this.cancelAllOrders();
-        }
-      } else if (
-        this.state === "paused" &&
-        this.lastMarginRatio >= this.config.minMarginRatio * 1.2
-      ) {
-        // Resume if margin has recovered with 20% buffer
-        logger.info(
-          `Margin ratio ${(this.lastMarginRatio * 100).toFixed(1)}% recovered, resuming...`
-        );
-        this.state = "running";
-      }
-    } catch (error) {
-      logger.error("Failed to check margin ratio:", error);
+private async checkMarginRatio(): Promise<void> {
+  try {
+    const account = await this.exchange.getAccount();
+    
+    // Keep this to track your health in the logs
+    if (account.equity > 0) {
+      this.lastMarginRatio = account.availableMargin / account.equity;
     }
+
+    // --- REMOVED THE closeAllPositions() CALL ---
+    // Now we only log the status. No orders will be sent.
+    if (this.lastMarginRatio < 0.7) {
+      logger.warn(`Margin low (${(this.lastMarginRatio * 100).toFixed(1)}%). Bot will keep quoting.`);
+    }
+
+  } catch (error) {
+    logger.error("Failed to check margin ratio:", error);
   }
+}
 
   /**
    * Main trading loop iteration
    */
   private async runMainLoop(): Promise<void> {
-    if (this.state !== "running") {
+    if (this.state !== "running" && this.state !== "paused") {
       return;
     }
-
+    
     // Throttle updates
     const now = Date.now();
     if (now - this.lastUpdateTime < this.config.updateThrottleMs) {
@@ -341,11 +326,20 @@ export class MarketMaker {
     // Cancel existing orders
     await this.cancelAllOrders();
 
-    // Place new orders
-    const orders = this.quoter.quoteToOrders(quote);
-    for (const order of orders) {
-      try {
-        const result = await this.exchange.placeOrder(order);
+// Place new orders
+      const orders = this.quoter.quoteToOrders(quote);
+      for (const order of orders) {
+        try {
+          // We create a custom payload that matches exactly what Hyperliquid wants
+          // Using .toFixed() ensures we don't send scientific notation (like 1e-7)
+          const hyperliquidPayload = {
+            ...order,
+            price: order.price.toFixed(6).toString(),
+            size: order.size.toString(),
+          };
+
+    // We cast to 'any' to bypass the TypeScript 'number' requirement in your types.ts
+        const result = await this.exchange.placeOrder(hyperliquidPayload as any);
         logger.info(
           `Order placed: ${order.side} ${order.size} @ ${order.price} -> ${result.orderId}`
         );
@@ -356,6 +350,8 @@ export class MarketMaker {
 
     // Reset error count on successful iteration
     this.errorCount = 0;
+
+    
   }
 
   /**
@@ -425,13 +421,14 @@ export class MarketMaker {
   /**
    * Handle errors with circuit breaker
    */
-  private handleError(): void {
-    this.errorCount++;
-    if (this.errorCount >= this.maxErrors) {
-      logger.error(`Too many errors (${this.errorCount}), pausing market maker`);
-      this.state = "paused";
-    }
+private handleError(): void {
+  this.errorCount++;
+  if (this.errorCount >= this.maxErrors) {
+    // We log the error, but we do NOT set this.state = "paused"
+    logger.error(`Critical Error Count reached (${this.errorCount}), but staying in RUNNING state.`);
+    this.errorCount = 0; // Reset so it doesn't spam logs forever
   }
+}
 
   /**
    * Get current status
@@ -462,13 +459,16 @@ export class MarketMaker {
         askSize: askOrder?.size || null,
       },
       isCloseMode: this.positionManager.isCloseMode(),
-      marginRatio: this.lastMarginRatio,
+      marginRatio: (1 - this.lastMarginRatio),
       uptime: Date.now() - this.startTime,
     };
   }
 }
 
 // Export components
-export { MarketMakerConfig, mergeConfig, validateConfig, DEFAULT_CONFIG } from "./config.js";
-export { Quoter, Quote } from "./quoter.js";
-export { PositionManager, PositionState } from "./position.js";
+export type { MarketMakerConfig } from "./config";
+export { mergeConfig, validateConfig, DEFAULT_CONFIG } from "./config";
+export { Quoter } from "./quoter";
+export type { Quote } from "./quoter";   // most common location for types
+export { PositionManager } from "./position";
+export type { PositionState } from "./position";   // or wherever it actually lives

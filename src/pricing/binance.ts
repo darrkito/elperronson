@@ -1,31 +1,26 @@
 import WebSocket from "ws";
 import { logger } from "../utils/logger.js";
 
-const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws";
+// CAMBIO 1: Host de Futuros (HYPE no está en Spot global)
+const BINANCE_FUTURES_WS_URL = "wss://fstream.binance.com/ws";
 
 /**
- * Binance trade message from WebSocket
+ * Payload optimizado para Market Making (bookTicker)
  */
-interface BinanceTrade {
-  e: string; // Event type ("trade")
-  E: number; // Event time
+interface BinanceBookTicker {
+  e: string; // Event type ("bookTicker")
+  u: number; // order book updateId
   s: string; // Symbol
-  t: number; // Trade ID
-  p: string; // Price
-  q: string; // Quantity
-  b: number; // Buyer order ID
-  a: number; // Seller order ID
-  T: number; // Trade time
-  m: boolean; // Is buyer maker
-  M: boolean; // Ignore
+  b: string; // Best bid price <--- Lo que usaremos como Fair Price
+  B: string; // Best bid qty
+  a: string; // Best ask price <--- Lo que usaremos como Fair Price
+  A: string; // Best ask qty
+  T: number; // Transaction time
+  E: number; // Event time
 }
 
 export type PriceCallback = (price: number, timestamp: number) => void;
 
-/**
- * Binance WebSocket price feed
- * Streams real-time trade prices from Binance spot market
- */
 export class BinancePriceFeed {
   private ws: WebSocket | null = null;
   private symbol: string;
@@ -34,91 +29,62 @@ export class BinancePriceFeed {
   private isConnecting = false;
   private shouldReconnect = true;
   private lastPrice: number | null = null;
-  private lastTimestamp: number | null = null;
 
-  /**
-   * Create a Binance price feed
-   * @param symbol - Trading symbol (e.g., "BTC" or "BTCUSDT")
-   * @param callback - Called on each price update
-   */
   constructor(symbol: string, callback: PriceCallback) {
-    // Normalize symbol to Binance format (e.g., "BTC" -> "btcusdt")
     this.symbol = this.normalizeSymbol(symbol);
     this.callback = callback;
   }
 
-  /**
-   * Normalize symbol to Binance format
-   */
   private normalizeSymbol(symbol: string): string {
-    // Remove any suffix like /USD:USDC
-    const base = symbol.split("/")[0].toLowerCase();
-    // Add USDT suffix if not present
-    if (!base.endsWith("usdt")) {
-      return `${base}usdt`;
-    }
-    return base;
+    // Para futuros, Binance siempre usa "hypeusdt" en minúsculas
+    return `${symbol.split("/")[0].toLowerCase().replace("usd", "")}usdt`;
   }
 
-  /**
-   * Connect to Binance WebSocket
-   */
   async connect(): Promise<void> {
-    if (this.ws || this.isConnecting) {
-      return;
-    }
+    if (this.ws || this.isConnecting) return;
 
     this.isConnecting = true;
     this.shouldReconnect = true;
 
     return new Promise((resolve, reject) => {
-      const streamUrl = `${BINANCE_WS_URL}/${this.symbol}@trade`;
-      logger.info(`Connecting to Binance price feed: ${streamUrl}`);
+      // CAMBIO 2: Usar @bookTicker para velocidad máxima
+      const streamUrl = `${BINANCE_FUTURES_WS_URL}/${this.symbol}@bookTicker`;
+      logger.info(`Connecting to Binance Futures: ${streamUrl}`);
 
       this.ws = new WebSocket(streamUrl);
 
       this.ws.on("open", () => {
-        logger.info(`Binance price feed connected for ${this.symbol}`);
+        logger.info(`Binance Futures Feed ACTIVE: ${this.symbol}`);
         this.isConnecting = false;
-
-        // Clear any pending reconnect
-        if (this.reconnectTimeout) {
-          clearTimeout(this.reconnectTimeout);
-          this.reconnectTimeout = null;
-        }
-
         resolve();
       });
 
       this.ws.on("message", (data: WebSocket.Data) => {
         try {
-          const trade = JSON.parse(data.toString()) as BinanceTrade;
-          const price = Number.parseFloat(trade.p);
-          const timestamp = trade.T;
+          const ticker = JSON.parse(data.toString()) as BinanceBookTicker;
+          
+          // Calculamos el Mid Price (Precio medio entre compra y venta)
+          // Esto es el Fair Price más preciso posible.
+          const bid = Number.parseFloat(ticker.b);
+          const ask = Number.parseFloat(ticker.a);
+          const midPrice = (bid + ask) / 2;
 
-          this.lastPrice = price;
-          this.lastTimestamp = timestamp;
-          this.callback(price, timestamp);
+          this.lastPrice = midPrice;
+          this.callback(midPrice, ticker.T);
         } catch (error) {
-          logger.error("Failed to parse Binance trade:", error);
+          logger.error("Error parsing Binance ticker:", error);
         }
-      });
-
-      this.ws.on("error", (error) => {
-        logger.error("Binance WebSocket error:", error);
-        this.isConnecting = false;
-        reject(error);
       });
 
       this.ws.on("close", () => {
-        logger.warn("Binance WebSocket closed");
         this.ws = null;
         this.isConnecting = false;
+        if (this.shouldReconnect) this.scheduleReconnect();
+      });
 
-        // Reconnect if not intentionally disconnected
-        if (this.shouldReconnect) {
-          this.scheduleReconnect();
-        }
+      this.ws.on("error", (err) => {
+        this.isConnecting = false;
+        reject(err);
       });
     });
   }

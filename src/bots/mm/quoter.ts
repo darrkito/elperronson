@@ -83,6 +83,10 @@ export class Quoter {
       askSize = this.roundSize(askSize);
     }
 
+    if (isCloseMode) {
+      logger.info("!!! TAKE PROFIT ACTIVE !!! Quoting tight spread: ${spread}bps");
+    }
+
     return {
       bidPrice,
       askPrice,
@@ -97,18 +101,22 @@ export class Quoter {
   /**
    * Convert quote to order requests
    */
-  quoteToOrders(quote: Quote, reduceOnly = false): OrderRequest[] {
+  quoteToOrders(quote: Quote): OrderRequest[] {
     const orders: OrderRequest[] = [];
+
+    // We ignore quote.isCloseMode to prevent the bot from "Panic Closing"
+    const shouldReduce = false; 
+    const shouldPostOnly = true;
 
     if (quote.bidSize > 0) {
       orders.push({
         symbol: this.config.symbol,
         side: "buy",
         type: "limit",
-        price: quote.bidPrice,
-        size: quote.bidSize,
-        postOnly: true,
-        reduceOnly: reduceOnly || quote.isCloseMode,
+        price: this.roundToTick(quote.bidPrice, "down"),
+        size: this.roundSize(quote.bidSize),
+        postOnly: shouldPostOnly,
+        reduceOnly: shouldReduce,
       });
     }
 
@@ -117,10 +125,10 @@ export class Quoter {
         symbol: this.config.symbol,
         side: "sell",
         type: "limit",
-        price: quote.askPrice,
-        size: quote.askSize,
-        postOnly: true,
-        reduceOnly: reduceOnly || quote.isCloseMode,
+        price: this.roundToTick(quote.askPrice, "up"),
+        size: this.roundSize(quote.askSize),
+        postOnly: shouldPostOnly,
+        reduceOnly: shouldReduce,
       });
     }
 
@@ -130,15 +138,19 @@ export class Quoter {
   /**
    * Round price to tick size
    */
-  private roundToTick(price: number, direction: "up" | "down"): number {
-    if (!this.market) return price;
+private roundToTick(price: number, direction: "up" | "down"): number {
+  const tickSize = 
+    (this.config.symbol === "BTC" || this.config.symbol === "ETH") ? 0.1 : 
+    (this.config.symbol === "HYPE") ? 0.01 : 
+    0.00001;
 
-    const tickSize = this.market.tickSize;
-    if (direction === "down") {
-      return Math.floor(price / tickSize) * tickSize;
-    }
-    return Math.ceil(price / tickSize) * tickSize;
+  if (direction === "down") {
+    // For Bids: Round down further to stay away from the Ask
+    return Math.floor(price / tickSize) * tickSize;
   }
+  // For Asks: Round up further to stay away from the Bid
+  return Math.ceil(price / tickSize) * tickSize;
+}
 
   /**
    * Round size to precision
